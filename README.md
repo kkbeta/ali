@@ -1,5 +1,6 @@
-阿里云相关
+【脚本】阿里云免费CDT实例自动检测流量进行限制[应该能适应各种流量限制场景][其他小鸡也可以使用][广泛参数设置]
 摘录https://www.nodeseek.com/post-127477-1，“她说是晒黑的楼主”这位大佬的
+
 
 apt-get install -y iptables bc vnstat
 
