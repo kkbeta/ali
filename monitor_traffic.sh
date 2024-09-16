@@ -151,6 +151,15 @@ if (( $(echo "$TRAFFIC_TO_CHECK > $LIMIT" | bc -l) )); then
   iptables -A OUTPUT -o lo -j ACCEPT
 
   echo "警告：流量已超出限制！除SSH（端口22）外，所有端口已被阻止。"
+#增加流量用光的文件。作为变为流量宽裕时，向cloudflare增加dns的ip记录的依据
+  if [ ! -f /root/traffic_out_of_usage ]; then
+          touch /root/traffic_out_of_usage
+  fi
+# 状态由流量宽裕变成流量用光时，向cloudflare删除dns的ip记录
+  if [ -f /root/traffic_enough ]; then
+          rm -rf /root/traffic_enough
+          bash /root/change_cloudflare_dns_ip_record.sh
+  fi
 
 else
 
@@ -163,5 +172,15 @@ else
   iptables -F
 
   echo "流量在设定的限制内，所有流量都被允许。"
+
+#增加流量宽裕时的文件。作为变为流量用光时，向cloudflare删除dns的ip记录的依据
+  if [ ! -f /root/traffic_enough ]; then
+          touch /root/traffic_enough
+  fi
+# 状态由流量用光变成流量宽裕时，向cloudflare加dns的ip记录
+  if [  -f /root/traffic_out_of_usage ]; then
+          rm -rf /root/traffic_out_of_usage
+          bash /root/change_cloudflare_dns_ip_record.sh
+  fi
 
 fi
