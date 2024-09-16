@@ -1,0 +1,23 @@
+更换cloudflare dns记录的脚本，并通过tg bot通知
+从 monitor_traffic.sh中的两个场景引发：
+1、状态由流量宽裕变成流量用光时，向cloudflare删除dns的ip记录
+  见monitor_traffic.sh的节点：
+  if [ -f /root/traffic_enough ]; then
+          rm -rf /root/traffic_enough
+          bash /root/change_cloudflare_dns_ip_record.sh
+  fi
+  对应change_cloudflare_dns_ip_record.sh中执行：
+    if [  -f /root/traffic_out_of_usage ]; then
+  删除失联IP。。。。
+
+2、状态由流量用光变成流量宽裕时，向cloudflare加dns的ip记录
+  见monitor_traffic.sh的节点：
+  if [  -f /root/traffic_out_of_usage ]; then
+          rm -rf /root/traffic_out_of_usage
+          bash /root/change_cloudflare_dns_ip_record.sh
+  fi
+  对应change_cloudflare_dns_ip_record.sh中执行：
+  # 地址池更新
+ if [  -f /root/traffic_enough ]; then
+  .....
+  
