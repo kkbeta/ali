@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 echo "开始读取配置"
 #填写本地ipv4
-LOCAL_IP=xxxx
+#LOCAL_IP=xxxx
+
+echo "通过ip.gs读取ip"
+LOCAL_IP=`curl -4 ip.gs`
+echo "本机ip地址是$LOCAL_IP"
 #地址池文件位置一行一个
 #IP_POOL=./ip_pool.txt
 #tg机器人的token
@@ -18,6 +22,7 @@ CFUSER=xxx@xxx.com
 CFZONE_NAME=xxx.com
 #二级域名
 CFRECORD_NAME=xx.xxx.com
+echo "同步的域名是$CFRECORD_NAME"
 #解析类型
 CFRECORD_TYPE=A
 #ttl时间
