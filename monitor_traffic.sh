@@ -145,6 +145,14 @@ if (( $(echo "$TRAFFIC_TO_CHECK > $LIMIT" | bc -l) )); then
   iptables -P OUTPUT ACCEPT
 
   iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+  
+#allow dns service for port 5353 and 8053
+
+  iptables -A INPUT -p tcp --dport 5353 -j ACCEPT
+
+  iptables -A INPUT -p tcp --dport 8053 -j ACCEPT
+
+  iptables -A INPUT -p udp --dport 5353 -j ACCEPT
 
   iptables -A INPUT -i lo -j ACCEPT
 
