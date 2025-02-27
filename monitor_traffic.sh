@@ -76,9 +76,9 @@ DATA=$(vnstat -i $INTERFACE --oneline)
 
 CURRENT_DATE=$(echo $DATA | cut -d ';' -f 8)
 
-TRAFFIC_RX=$(echo $DATA | cut -d ';' -f 13 | tr -d ' ' | sed 's/MiB//;s/GiB/*1024/;s/KiB/\/1024/' | bc)
+TRAFFIC_RX=$(echo $DATA | cut -d ';' -f 13 | tr -d ' ' | sed 's/MiB//;s/GiB/*1024/;s/KiB/\/1024/;s/TiB/*1024*1024/' | bc)
 
-TRAFFIC_TX=$(echo $DATA | cut -d ';' -f 14 | tr -d ' ' | sed 's/MiB//;s/GiB/*1024/;s/KiB/\/1024/' | bc)
+TRAFFIC_TX=$(echo $DATA | cut -d ';' -f 14 | tr -d ' ' | sed 's/MiB//;s/GiB/*1024/;s/KiB/\/1024/;s/TiB/*1024*1024/' | bc)
 
 echo "当前月份：$CURRENT_DATE"
 
