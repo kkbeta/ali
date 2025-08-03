@@ -1,0 +1,145 @@
+#!/bin/bash
+
+# ==============================================================================
+# 全功能融合版流量监控脚本 (V7 - 最终版)
+#
+# 此版本严格按照用户要求：
+# 1. 保留原始脚本的完整判断逻辑 (检查类型 1/2/3/4)。
+# 2. 采用最安全的iptables策略 (不修改INPUT,仅管控OUTPUT)。
+# 3. 使用最稳定的vnstat JSON解析，并兼容原始脚本的四参数命令格式。
+# ==============================================================================
+
+# ##############################################################################
+# ### 重要配置: 请在此处修改您的端口号！                                    ###
+# ##############################################################################
+#
+# 您的SSH端口 (如果不是22, 请务必修改, 否则超限后您将被锁定!)
+SSH_PORT=22
+#
+# 需要额外放行的出站服务端口 (例如DoH/DNS服务, 多个用逗号分隔)
+# 标准DNS(53)已被默认允许，这里填写额外的端口即可。
+EXTRA_PORTS="8053"
+#
+# ##############################################################################
+
+
+# --- 接收并解析启动参数 ---
+LIMIT_GB=${1}
+# 第2个参数 (Reset Day) 为兼容命令格式而接收，但已不再使用。
+RESET_DAY_IGNORED=${2}
+CHECK_TYPE=${3}
+INTERFACE=${4}
+
+
+# --- 内部变量 ---
+LIMIT_KIB=$((LIMIT_GB * 1024 * 1024))
+LOG_FILE="/root/monitor_traffic.log"
+LOCK_FILE="/var/run/traffic_limited.lock"
+
+
+# --- 函数定义 ---
+
+# 脚本内部日志记录函数
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# 应用精确出站流量限制 (不修改INPUT链)
+block_traffic() {
+    if [ -f "$LOCK_FILE" ]; then return; fi
+    log "ALERT: Traffic limit exceeded! Applying precise OUTPUT restrictions."
+    log "INFO: INPUT rules will NOT be changed."
+    iptables -F OUTPUT
+    iptables -P OUTPUT DROP
+    log "POLICY: OUTPUT chain default policy set to DROP."
+    iptables -A OUTPUT -o lo -j ACCEPT
+    iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    iptables -A OUTPUT -p icmp -j ACCEPT
+    iptables -A OUTPUT -p tcp --dport "$SSH_PORT" -j ACCEPT
+    log "RULE: Allowing outgoing SSH on TCP port $SSH_PORT."
+    iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+    iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+    if [ -n "$EXTRA_PORTS" ]; then
+        IFS=',' read -ra PORTS <<< "$EXTRA_PORTS"
+        for port in "${PORTS[@]}"; do
+            iptables -A OUTPUT -p tcp --dport "$port" -j ACCEPT
+            iptables -A OUTPUT -p udp --dport "$port" -j ACCEPT
+            log "RULE: Allowing outgoing custom service on UDP/TCP port $port."
+        done
+    fi
+    log "SUCCESS: Precise output restriction is now active."
+    touch "$LOCK_FILE"
+}
+
+# 解除出站流量限制 (不修改INPUT链)
+unblock_traffic() {
+    if [ ! -f "$LOCK_FILE" ]; then return; fi
+    log "INFO: Traffic is within limits. Restoring default OUTPUT policy."
+    log "INFO: INPUT rules were not and will not be changed."
+    iptables -P OUTPUT ACCEPT
+    iptables -F OUTPUT
+    log "SUCCESS: Default OUTPUT policy restored to ACCEPT."
+    rm -f "$LOCK_FILE"
+}
+
+# --- 主逻辑 ---
+
+log "========== Starting Traffic Check =========="
+log "CONFIG: Limit=${LIMIT_GB}G, CheckType=${CHECK_TYPE}, Interface=${INTERFACE}"
+
+# 检查jq
+if ! command -v jq &> /dev/null; then log "ERROR: jq is not installed."; exit 1; fi
+
+# 获取流量
+vnstat_data=$(vnstat --json m 1 -i "$INTERFACE" 2>/dev/null)
+if [ -z "$vnstat_data" ]; then log "ERROR: Failed to get data from vnstat."; exit 1; fi
+
+TRAFFIC_TX_KIB=$(echo "$vnstat_data" | jq '.interfaces[0].traffic.month[0].tx // 0')
+TRAFFIC_RX_KIB=$(echo "$vnstat_data" | jq '.interfaces[0].traffic.month[0].rx // 0')
+if ! [[ "$TRAFFIC_TX_KIB" =~ ^[0-9]+$ && "$TRAFFIC_RX_KIB" =~ ^[0-9]+$ ]]; then
+    log "ERROR: Failed to parse traffic data."
+    exit 1
+fi
+
+# --- 这里是您原始脚本的完整判断逻辑 ---
+TRAFFIC_TO_CHECK_KIB=0
+CHECK_TYPE_DESC=""
+case "$CHECK_TYPE" in
+    1)
+        TRAFFIC_TO_CHECK_KIB=$TRAFFIC_TX_KIB
+        CHECK_TYPE_DESC="Outgoing (TX) only"
+        ;;
+    2)
+        TRAFFIC_TO_CHECK_KIB=$TRAFFIC_RX_KIB
+        CHECK_TYPE_DESC="Incoming (RX) only"
+        ;;
+    3)
+        if (( TRAFFIC_TX_KIB > TRAFFIC_RX_KIB )); then
+            TRAFFIC_TO_CHECK_KIB=$TRAFFIC_TX_KIB
+        else
+            TRAFFIC_TO_CHECK_KIB=$TRAFFIC_RX_KIB
+        fi
+        CHECK_TYPE_DESC="Max of TX/RX"
+        ;;
+    4)
+        TRAFFIC_TO_CHECK_KIB=$((TRAFFIC_TX_KIB + TRAFFIC_RX_KIB))
+        CHECK_TYPE_DESC="Sum of TX+RX"
+        ;;
+    *)
+        log "ERROR: Invalid Check Type '$CHECK_TYPE'. Must be 1, 2, 3, or 4."
+        exit 1
+        ;;
+esac
+# --- 判断逻辑结束 ---
+
+TRAFFIC_GB=$(awk "BEGIN {printf \"%.2f\", $TRAFFIC_TO_CHECK_KIB / 1024 / 1024}")
+log "STATS: Type=[$CHECK_TYPE_DESC]. Traffic to check: ${TRAFFIC_GB} GB."
+
+# 比较流量并执行操作
+if (( TRAFFIC_TO_CHECK_KIB > LIMIT_KIB )); then
+    block_traffic
+else
+    unblock_traffic
+fi
+
+log "========== Traffic Check Finished =========="
